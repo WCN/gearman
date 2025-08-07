@@ -2,11 +2,12 @@ package gearman
 
 import (
 	"bytes"
-	"gearman/job"
-	"gearman/packet"
 	"strconv"
 	"sync"
 	"testing"
+
+	"github.com/adamoleeo/gearman/v2/job"
+	"github.com/adamoleeo/gearman/v2/packet"
 
 	"github.com/stretchr/testify/assert"
 )

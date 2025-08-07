@@ -2,8 +2,9 @@ package scanner
 
 import (
 	"bytes"
-	"gearman/packet"
 	"testing"
+
+	"github.com/adamoleeo/gearman/v2/packet"
 
 	"github.com/stretchr/testify/assert"
 )

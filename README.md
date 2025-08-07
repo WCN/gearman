@@ -1,10 +1,10 @@
 # gearman
 
-    import "github.com/adamoleeo/gearman"
+    import "github.com/adamoleeo/gearman/v2"
 
 Package gearman provides a thread-safe Gearman client.
 
-For complete usage examples and documentation, please see [https://pkg.go.dev/github.com/adamoleeo/gearman](https://pkg.go.dev/github.com/adamoleeo/gearman).
+For complete usage examples and documentation, please see [https://pkg.go.dev/github.com/adamoleeo/gearman/v2](https://pkg.go.dev/github.com/adamoleeo/gearman/v2).
 
 
 ### Example
@@ -15,7 +15,7 @@ from that job:
     package main
 
     import(
-    	"github.com/adamoleeo/gearman"
+    	"github.com/adamoleeo/gearman/v2"
     	"ioutil"
     )
 

@@ -1,6 +1,6 @@
-module gearman
+module github.com/adamoleeo/gearman/v2
 
-go 1.24.5
+go 1.18
 
 require github.com/stretchr/testify v1.10.0
 
