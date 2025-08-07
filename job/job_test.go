@@ -2,12 +2,12 @@ package job
 
 import (
 	"fmt"
+	"gearman/packet"
+	"gearman/utils"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/Clever/gearman.v2/packet"
-	"gopkg.in/Clever/gearman.v2/utils"
 )
 
 func statusPacket(handle string, num, den int) *packet.Packet {

@@ -2,11 +2,10 @@ package job
 
 import (
 	"fmt"
+	"gearman/packet"
 	"io"
 	"os"
 	"strconv"
-
-	"gopkg.in/Clever/gearman.v2/packet"
 )
 
 // State of a Gearman job

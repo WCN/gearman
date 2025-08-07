@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"gearman/job"
+	"gearman/packet"
+	"gearman/scanner"
 	"io"
 	"io/ioutil"
 	"net"
@@ -11,10 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"gopkg.in/Clever/gearman.v2/job"
-	"gopkg.in/Clever/gearman.v2/packet"
-	"gopkg.in/Clever/gearman.v2/scanner"
 )
 
 // noOpCloser is like an ioutil.NopCloser, but for an io.Writer.
