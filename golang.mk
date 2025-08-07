@@ -91,7 +91,7 @@ golang-fmt-deps: $(FGT)
 # arg1: pkg path
 define golang-fmt
 @echo "FORMATTING $(1)..."
-@$(FGT) gofmt -l=true $(GOPATH)/src/$(1)/*.go
+@find . -name "*.go" -type f | grep -v vendor | xargs $(FGT) gofmt -l=true
 endef
 
 # golang-lint-deps requires the golint tool for golang linting.
@@ -101,7 +101,12 @@ golang-lint-deps: $(GOLINT)
 # arg1: pkg path
 define golang-lint
 @echo "LINTING $(1)..."
-@find $(GOPATH)/src/$(1)/*.go -type f | grep -v gen_ | xargs $(GOLINT)
+@if [ "$(1)" = "gearman" ]; then \
+	find . -maxdepth 1 -name "*.go" -type f | grep -v vendor | grep -v gen_ | xargs $(GOLINT); \
+else \
+	PACKAGE_DIR=$$(echo $(1) | sed 's/gearman\///'); \
+	find ./$$PACKAGE_DIR -name "*.go" -type f | grep -v vendor | grep -v gen_ | xargs $(GOLINT); \
+fi
 endef
 
 # golang-lint-deps-strict requires the golint tool for golang linting.
@@ -142,7 +147,7 @@ golang-vet-deps:
 # arg1: pkg path
 define golang-vet
 @echo "VETTING $(1)..."
-@go vet $(GOPATH)/src/$(1)/*.go
+@go vet ./...
 endef
 
 # golang-test-all-deps installs all dependencies needed for different test cases.

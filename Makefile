@@ -4,7 +4,7 @@ include golang.mk
 .PHONY: all build clean test
 
 SHELL := /bin/bash
-PKG := gopkg.in/Clever/gearman.v2
+PKG := gearman
 PKGS := $(shell go list ./... | grep -v vendor)
 EXECUTABLE := $(shell basename $(PKG))
 $(eval $(call golang-version-check,1.12))

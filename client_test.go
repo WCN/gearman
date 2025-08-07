@@ -2,13 +2,13 @@ package gearman
 
 import (
 	"bytes"
+	"gearman/job"
+	"gearman/packet"
 	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/Clever/gearman.v2/job"
-	"gopkg.in/Clever/gearman.v2/packet"
 )
 
 type bufferCloser struct {

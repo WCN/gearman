@@ -1,15 +1,15 @@
 /*
 Package gearman provides a thread-safe Gearman client
 
-Example
+# Example
 
 Here's an example program that submits a job to Gearman and listens for events from that job:
 
 	package main
 
-	import(
-		"gopkg.in/Clever/gearman.v2"
-		"ioutil"
+	import (
+		"github.com/adamoleeo/gearman"
+		"io/ioutil"
 	)
 
 	func main() {

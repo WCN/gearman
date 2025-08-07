@@ -19,6 +19,11 @@ var (
 	Res = packetCode([]byte{0, byte('R'), byte('E'), byte('S')})
 )
 
+const (
+	// Maximum packet size to prevent memory exhaustion attacks
+	maxPacketSize = 1 * 1024 * 1024 // 1MB
+)
+
 // Packet contains a Gearman packet. See http://gearman.org/protocol/
 type Packet struct {
 	// The Code for the packet: either \0REQ or \0RES
@@ -31,37 +36,58 @@ type Packet struct {
 
 // UnmarshalBinary implements the encoding.BinaryUnmarshaler interface
 func (packet *Packet) UnmarshalBinary(data []byte) error {
-	// ensure packet is of minimum length
+	// 4 bytes each for magic, type, data length
 	if len(data) < 12 {
-		return errors.New("All gearman packets must be at least 12 bytes or more.")
+		return errors.New("all gearman packets must be at least 12 bytes or more")
 	}
 
-	// determine the packet magic code
+	if len(data) > maxPacketSize {
+		return fmt.Errorf("packet too large: %d bytes (maximum %d allowed)", len(data), maxPacketSize)
+	}
+
 	if bytes.Compare(data[0:4], Req) == 0 {
 		packet.Code = Req
 	} else if bytes.Compare(data[0:4], Res) == 0 {
 		packet.Code = Res
 	} else {
-		return fmt.Errorf("Unrecognized magic packet code %#v", data[0:4])
+		return fmt.Errorf("unrecognized magic packet code %#v", data[0:4])
 	}
 
 	// determine the kind of packet
-	kind := int32(0)
+	kind := uint32(0)
 	if err := binary.Read(bytes.NewBuffer(data[4:8]), binary.BigEndian, &kind); err != nil {
-		return fmt.Errorf("Error while reading packet type: %s", err)
+		return fmt.Errorf("cannot read packet type: %s", err)
 	}
 	packet.Type = Type(kind)
 
-	// parse the length of the packet
-	length := int32(0)
+	length := uint32(0)
 	if err := binary.Read(bytes.NewBuffer(data[8:12]), binary.BigEndian, &length); err != nil {
-		return fmt.Errorf("Error while reading packet length: %s", err)
+		return fmt.Errorf("cannot read packet data_length: %s", err)
 	}
 
-	// parse the arguments into a byte array
 	packet.Arguments = [][]byte{}
-	if length > 0 {
-		packet.Arguments = bytes.Split(data[12:len(data)], []byte{0})
+	if length == 0 {
+		return nil // no data/arguments
+	}
+
+	if length > maxPacketSize {
+		return fmt.Errorf("packet length too large: %d bytes (maximum %d allowed)", length, maxPacketSize)
+	}
+
+	expectedDataLength := 12 + int(length)
+	if len(data) != expectedDataLength {
+		return fmt.Errorf("packet data length mismatch: expected %d bytes, got %d", expectedDataLength, len(data))
+	}
+
+	if len(data) <= 12 {
+		return fmt.Errorf("packet has declared length %d but no data after header", length)
+	}
+
+	packet.Arguments = bytes.Split(data[12:expectedDataLength], []byte{0})
+
+	// Validate that we don't have an excessive number of arguments
+	if len(packet.Arguments) > 1000 {
+		return fmt.Errorf("too many arguments in packet: %d (maximum 1000 allowed)", len(packet.Arguments))
 	}
 
 	return nil
@@ -73,8 +99,8 @@ func (packet *Packet) MarshalBinary() ([]byte, error) {
 	buf := bytes.NewBuffer(packet.Code)
 
 	// write the packet type
-	if err := binary.Write(buf, binary.BigEndian, int32(packet.Type)); err != nil {
-		return nil, fmt.Errorf("Error while writing packet type: %s", err)
+	if err := binary.Write(buf, binary.BigEndian, uint32(packet.Type)); err != nil {
+		return nil, fmt.Errorf("cannot write packet type: %w", err)
 	}
 
 	// finish the header with the size of the packet
@@ -85,8 +111,8 @@ func (packet *Packet) MarshalBinary() ([]byte, error) {
 	size = int(math.Max(0, float64(size)))
 
 	// write the size of the packet
-	if err := binary.Write(buf, binary.BigEndian, int32(size)); err != nil {
-		return nil, fmt.Errorf("Error while writing packet length: %s", err)
+	if err := binary.Write(buf, binary.BigEndian, uint32(size)); err != nil {
+		return nil, fmt.Errorf("cannot write packet length: %w", err)
 	}
 
 	// write all arguments provided
