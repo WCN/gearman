@@ -1,10 +1,10 @@
 # gearman
 
-    import "gopkg.in/Clever/gearman.v2"
+    import "github.com/adamoleeo/gearman"
 
 Package gearman provides a thread-safe Gearman client.
 
-For complete usage examples and documentation, please see [https://godoc.org/gopkg.in/Clever/gearman.v2](https://godoc.org/gopkg.in/Clever/gearman.v2).
+For complete usage examples and documentation, please see [https://pkg.go.dev/github.com/adamoleeo/gearman](https://pkg.go.dev/github.com/adamoleeo/gearman).
 
 
 ### Example
@@ -15,7 +15,7 @@ from that job:
     package main
 
     import(
-    	"gopkg.in/Clever/gearman.v2"
+    	"github.com/adamoleeo/gearman"
     	"ioutil"
     )
 
@@ -78,3 +78,8 @@ func (c *Client) SubmitBackground(fn string, payload []byte) error
 ```
 SubmitBackground submits a background job. There is no access to data, warnings,
 or completion state.
+
+# HISTORY
+
+Package was forked from https://github.com/graveyard/gearman, probably
+originally https://github.com/Clever/gearman but that has gone away.

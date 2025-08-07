@@ -1,3 +1,11 @@
+// Package scanner provides functionality for scanning Gearman protocol packets
+// from an io.Reader.
+//
+// The scanner implements the Gearman binary protocol parsing, allowing you to
+// read and parse Gearman packets from a stream. It handles packet boundaries,
+// size validation, and provides a bufio.Scanner-compatible interface.
+//
+// For the complete protocol specification, see: http://gearman.org/protocol/
 package scanner
 
 import (
@@ -19,7 +27,9 @@ const (
 )
 
 // New returns a new Scanner that parses a Reader as the Gearman protocol.
-// See: http://gearman.org/protocol/
+// The scanner will automatically handle packet boundaries and size validation.
+//
+// See: http://gearman.org/protocol/ for the complete protocol specification.
 func New(r io.Reader) *bufio.Scanner {
 	scanner := bufio.NewScanner(r)
 
