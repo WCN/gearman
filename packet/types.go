@@ -1,5 +1,7 @@
 package packet
 
+import "fmt"
+
 // Type represents the type of the Gearman packet
 type Type int
 
@@ -25,3 +27,31 @@ const (
 	// WorkWarning = WORK_WARNING
 	WorkWarning = 29
 )
+
+// String returns a string representation of the packet type
+func (t Type) String() string {
+	switch t {
+	case PreSleep:
+		return "PreSleep"
+	case SubmitJob:
+		return "SubmitJob"
+	case JobCreated:
+		return "JobCreated"
+	case JobAssign:
+		return "JobAssign"
+	case WorkStatus:
+		return "WorkStatus"
+	case WorkComplete:
+		return "WorkComplete"
+	case WorkFail:
+		return "WorkFail"
+	case SubmitJobBg:
+		return "SubmitJobBg"
+	case WorkData:
+		return "WorkData"
+	case WorkWarning:
+		return "WorkWarning"
+	default:
+		return fmt.Sprintf("Unknown(%d)", t)
+	}
+}

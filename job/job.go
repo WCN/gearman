@@ -73,40 +73,89 @@ func (j *Job) Run() State {
 
 // handlePackets updates a job based off of incoming packets associated with this job.
 func (j *Job) handlePackets(packets <-chan *packet.Packet) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "GEARMAN PANIC: recovered from panic in job handlePackets: %v\n", r)
+			j.state = Failed
+			close(j.done)
+		}
+	}()
+
 	for pack := range packets {
+		if pack == nil {
+			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: received nil packet, skipping\n")
+			continue
+		}
+
 		switch pack.Type {
 		case packet.WorkStatus:
 			// check that packet is valid WORK_STATUS
 			if len(pack.Arguments) != 3 {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Recieved invalid WORK_STATUS packet with '%d' fields\n",
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Received invalid WORK_STATUS packet with '%d' fields\n",
 					len(pack.Arguments))
-				return
+				continue
 			}
 
 			num, err := strconv.Atoi(string(pack.Arguments[1]))
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Error converting numerator", err)
+				continue
 			}
 			den, err := strconv.Atoi(string(pack.Arguments[2]))
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Error converting denominator", err)
+				continue
 			}
 			j.status = Status{Numerator: num, Denominator: den}
 		case packet.WorkComplete:
+			if len(pack.Arguments) > 1 && len(pack.Arguments[1]) > 0 {
+				dataSize := len(pack.Arguments[1])
+
+				if dataSize > 1*1024*1024 { // 1MB limit
+					fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkComplete data too large: %d bytes (maximum 1MB allowed)\n", dataSize)
+					j.state = Failed
+					close(j.done)
+					return
+				}
+
+				if _, err := j.data.Write(pack.Arguments[1]); err != nil {
+					fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing data from WorkComplete: %v\n", err)
+				}
+			}
 			j.state = Completed
 			close(j.done)
 		case packet.WorkFail:
 			j.state = Failed
 			close(j.done)
 		case packet.WorkData:
+			if len(pack.Arguments) < 2 {
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkData packet missing data argument\n")
+				continue
+			}
+
+			dataSize := len(pack.Arguments[1])
+			if dataSize > 1*1024*1024 { // 1MB limit
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkData too large: %d bytes (maximum 1MB allowed)\n", dataSize)
+				continue
+			}
+
 			if _, err := j.data.Write(pack.Arguments[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing data, arg: %s, err: %s",
-					pack.Arguments[1], err)
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing data: %v\n", err)
 			}
 		case packet.WorkWarning:
+			if len(pack.Arguments) < 2 {
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkWarning packet missing warning argument\n")
+				continue
+			}
+
+			warningSize := len(pack.Arguments[1])
+			if warningSize > 100*1024 { // 100KB limit for warnings
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkWarning too large: %d bytes (maximum 100KB allowed)\n", warningSize)
+				continue
+			}
+
 			if _, err := j.warnings.Write(pack.Arguments[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing warnings, arg: %s, err: %s",
-					pack.Arguments[1], err)
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing warnings: %v\n", err)
 			}
 		default:
 			fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Unimplemented packet type", pack.Type)

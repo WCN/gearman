@@ -8,7 +8,9 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/Clever/gearman.v2/job"
 	"gopkg.in/Clever/gearman.v2/packet"
@@ -49,15 +51,34 @@ type Client struct {
 	partialJobs chan *partialJob
 	newJobs     chan *job.Job
 	jobLock     sync.RWMutex
+	// connection state
+	connLock sync.RWMutex
+	connErr  error // tracks the last connection error
+	closed   bool  // tracks if the client has been closed
 }
 
 // Close terminates the connection to the server
 func (c *Client) Close() error {
+	c.connLock.Lock()
+	c.closed = true
+	c.connLock.Unlock()
 	// TODO: figure out when to close packet chan
 	return c.conn.Close()
 }
 
 func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser, t packet.Type) (*job.Job, error) {
+	// Check if the client has been closed or has a connection error
+	c.connLock.RLock()
+	if c.closed {
+		c.connLock.RUnlock()
+		return nil, fmt.Errorf("client is closed")
+	}
+	if c.connErr != nil {
+		c.connLock.RUnlock()
+		return nil, fmt.Errorf("connection error: %w", c.connErr)
+	}
+	c.connLock.RUnlock()
+
 	// create and marshal the gearman packet
 	pack := &packet.Packet{
 		Code:      packet.Req,
@@ -71,12 +92,27 @@ func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser
 
 	// write the packet to the gearman server
 	if _, err := io.Copy(c.conn, bytes.NewBuffer(buf)); err != nil {
-		return nil, err
+		// Mark connection as failed
+		c.connLock.Lock()
+		c.connErr = err
+		c.connLock.Unlock()
+		return nil, fmt.Errorf("failed to send packet: %w", err)
 	}
 
 	// block while the client waits for confirmation that a job has been created
-	c.partialJobs <- &partialJob{data: data, warnings: warnings}
-	return <-c.newJobs, nil
+	select {
+	case c.partialJobs <- &partialJob{data: data, warnings: warnings}:
+		// Job submitted successfully
+	case <-time.After(30 * time.Second):
+		return nil, fmt.Errorf("timeout waiting for job confirmation")
+	}
+
+	select {
+	case job := <-c.newJobs:
+		return job, nil
+	case <-time.After(30 * time.Second):
+		return nil, fmt.Errorf("timeout waiting for job creation")
+	}
 }
 
 // Submit sends a new job to the server with the specified function and payload. You must provide
@@ -116,16 +152,64 @@ func (c *Client) deleteJob(handle string) {
 // read attempts to read incoming packets from the gearman server to route them to the job
 // they are intended for.
 func (c *Client) read(scanner *bufio.Scanner) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "GEARMAN PANIC: recovered from panic in read loop: %v\n", r)
+		}
+	}()
+
 	for scanner.Scan() {
 		pack := &packet.Packet{}
 		if err := pack.UnmarshalBinary(scanner.Bytes()); err != nil {
-			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: error parsing packet! %#v\n", err)
+			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: error parsing packet! %v\n", err)
+			continue // Skip this packet and continue reading
 		} else {
-			c.packets <- pack
+			if pack == nil {
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: received nil packet, skipping\n")
+				continue
+			}
+
+			// Use non-blocking send to prevent deadlock if channel is full
+			select {
+			case c.packets <- pack:
+				// Packet sent successfully
+			default:
+				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: packet channel full, dropping packet\n")
+			}
 		}
 	}
 	if scanner.Err() != nil {
-		fmt.Fprintf(os.Stderr, "GEARMAN WARNING: error scanning! %#v\n", scanner.Err())
+		errMsg := scanner.Err().Error()
+		if strings.Contains(errMsg, "use of closed network connection") {
+			// fmt.Fprintf(os.Stderr, "DEBUG: Connection closed normally\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: error scanning! %v\n", scanner.Err())
+			// Mark connection as failed
+			c.connLock.Lock()
+			c.connErr = scanner.Err()
+			c.connLock.Unlock()
+			c.failPendingJobs(scanner.Err())
+		}
+	}
+}
+
+// failPendingJobs fails all pending jobs when a scanner error occurs
+func (c *Client) failPendingJobs(err error) {
+	c.jobLock.Lock()
+	defer c.jobLock.Unlock()
+
+	for handle, packets := range c.jobs {
+		fmt.Fprintf(os.Stderr, "GEARMAN WARNING: failing job %s due to scanner error: %v\n", handle, err)
+		failPacket := &packet.Packet{
+			Type:      packet.WorkFail,
+			Arguments: [][]byte{[]byte(handle)},
+		}
+
+		select {
+		case packets <- failPacket:
+		default:
+			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: could not send fail packet to job %s\n", handle)
+		}
 	}
 }
 
