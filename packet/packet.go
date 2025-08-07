@@ -1,5 +1,11 @@
-// Package packet provides structures to marshal binary data to and from binary data.
-// The specification is located at http://gearman.org/protocol/.
+// Package packet provides structures to marshal binary data to and from binary data
+// according to the Gearman protocol specification.
+//
+// The Gearman protocol is a binary protocol where packets consist of a header
+// (magic code, type, and data length) followed by optional data. This package
+// provides types and functions for creating, parsing, and manipulating these packets.
+//
+// For the complete protocol specification, see: http://gearman.org/protocol/
 package packet
 
 import (
@@ -24,7 +30,9 @@ const (
 	maxPacketSize = 1 * 1024 * 1024 // 1MB
 )
 
-// Packet contains a Gearman packet. See http://gearman.org/protocol/
+// Packet contains a Gearman packet according to the protocol specification.
+// Each packet has a code (either REQ or RES), a type, and optional arguments.
+// See http://gearman.org/protocol/ for the complete specification.
 type Packet struct {
 	// The Code for the packet: either \0REQ or \0RES
 	Code packetCode

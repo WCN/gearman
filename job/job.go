@@ -1,3 +1,8 @@
+// Package job provides types and functions for managing Gearman jobs.
+//
+// A Job represents a single Gearman job that can be submitted to a Gearman server.
+// Jobs can be in various states (Running, Completed, Failed) and can provide
+// status updates and data during execution.
 package job
 
 import (
@@ -8,7 +13,7 @@ import (
 	"strconv"
 )
 
-// State of a Gearman job
+// State represents the current state of a Gearman job.
 type State int
 
 const (
@@ -37,7 +42,7 @@ func (s State) String() string {
 	return "Unknown"
 }
 
-// Status of a Gearman job
+// Status represents the progress status of a Gearman job.
 type Status struct {
 	// Numerator is the numerator of the % complete
 	Numerator int
@@ -45,7 +50,9 @@ type Status struct {
 	Denominator int
 }
 
-// Job represents a Gearman job
+// Job represents a Gearman job that can be submitted to a Gearman server.
+// A job can be in various states and provides methods to check status and
+// wait for completion.
 type Job struct {
 	handle         string
 	data, warnings io.WriteCloser
@@ -54,17 +61,17 @@ type Job struct {
 	done           chan struct{}
 }
 
-// Handle returns job handle
+// Handle returns the job handle assigned by the Gearman server.
 func (j Job) Handle() string {
 	return j.handle
 }
 
-// Status returns the current status of the gearman job
+// Status returns the current status of the gearman job.
 func (j Job) Status() Status {
 	return j.status
 }
 
-// Run blocks until the job completes. Returns the state, Completed or Failed.
+// Run blocks until the job completes. Returns the final state, either Completed or Failed.
 func (j *Job) Run() State {
 	<-j.done
 	return j.state

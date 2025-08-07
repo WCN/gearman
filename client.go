@@ -1,3 +1,27 @@
+// Package gearman provides a thread-safe Gearman client implementation in Go.
+//
+// Gearman is a job queue system that allows you to distribute work across multiple
+// machines or processes. This package provides a client that can submit jobs to
+// a Gearman server and handle the responses.
+//
+// The client supports both foreground and background jobs, and provides methods
+// for submitting jobs and receiving data and warnings from job execution.
+//
+// Example usage:
+//
+//	client, err := gearman.NewClient("tcp4", "localhost:4730")
+//	if err != nil {
+//		panic(err)
+//	}
+//	defer client.Close()
+//
+//	job, err := client.Submit("reverse", []byte("hello world!"), nil, nil)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	state := job.Run()
+//	fmt.Println("Job completed with state:", state)
 package gearman
 
 import (
@@ -38,7 +62,9 @@ type partialJob struct {
 	warnings io.WriteCloser
 }
 
-// Client is a Gearman client
+// Client is a thread-safe Gearman client that can submit jobs to a Gearman server.
+// The client maintains a connection to the server and handles packet routing
+// to the appropriate jobs.
 type Client struct {
 	// conn is the connection to the gearman server
 	conn io.WriteCloser
@@ -56,7 +82,7 @@ type Client struct {
 	closed   bool  // tracks if the client has been closed
 }
 
-// Close terminates the connection to the server
+// Close terminates the connection to the server and cleans up resources.
 func (c *Client) Close() error {
 	c.connLock.Lock()
 	c.closed = true
