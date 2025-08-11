@@ -1,7 +1,6 @@
 package job
 
 import (
-	"fmt"
 	"strconv"
 	"testing"
 
@@ -66,6 +65,6 @@ func TestHandlePacketsDataWarning(t *testing.T) {
 }
 
 func TestStateStringer(t *testing.T) {
-	assert.Equal(t, "Running", fmt.Sprintf("%s", Running))
+	assert.Equal(t, "Running", Running.String())
 	assert.Equal(t, "Completed", Completed.String())
 }

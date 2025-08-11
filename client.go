@@ -29,7 +29,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -41,7 +40,7 @@ import (
 	"github.com/wcn/gearman/v2/scanner"
 )
 
-// noOpCloser is like an ioutil.NopCloser, but for an io.Writer.
+// noOpCloser is like an io.NopCloser, but for an io.Writer.
 type noOpCloser struct {
 	w io.Writer
 }
@@ -54,7 +53,7 @@ func (c noOpCloser) Close() error {
 	return nil
 }
 
-var discard = noOpCloser{w: ioutil.Discard}
+var discard = noOpCloser{w: io.Discard}
 
 type partialJob struct {
 	// data is used to write data back to the caller's provided io.Writer
@@ -189,19 +188,14 @@ func (c *Client) read(scanner *bufio.Scanner) {
 		if err := pack.UnmarshalBinary(scanner.Bytes()); err != nil {
 			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: error parsing packet! %v\n", err)
 			continue // Skip this packet and continue reading
-		} else {
-			if pack == nil {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: received nil packet, skipping\n")
-				continue
-			}
+		}
 
-			// Use non-blocking send to prevent deadlock if channel is full
-			select {
-			case c.packets <- pack:
-				// Packet sent successfully
-			default:
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: packet channel full, dropping packet\n")
-			}
+		// Use non-blocking send to prevent deadlock if channel is full
+		select {
+		case c.packets <- pack:
+			// Packet sent successfully
+		default:
+			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: packet channel full, dropping packet\n")
 		}
 	}
 	if scanner.Err() != nil {
@@ -284,7 +278,7 @@ func (c *Client) routePackets() {
 func NewClient(network, addr string) (*Client, error) {
 	conn, err := net.Dial(network, addr)
 	if err != nil {
-		return nil, fmt.Errorf("Error while establishing a connection to gearman: %s", err)
+		return nil, fmt.Errorf("error while establishing a connection to gearman: %s", err)
 	}
 
 	c := &Client{

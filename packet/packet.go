@@ -53,9 +53,9 @@ func (packet *Packet) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("packet too large: %d bytes (maximum %d allowed)", len(data), maxPacketSize)
 	}
 
-	if bytes.Compare(data[0:4], Req) == 0 {
+	if bytes.Equal(data[0:4], Req) {
 		packet.Code = Req
-	} else if bytes.Compare(data[0:4], Res) == 0 {
+	} else if bytes.Equal(data[0:4], Res) {
 		packet.Code = Res
 	} else {
 		return fmt.Errorf("unrecognized magic packet code %#v", data[0:4])
