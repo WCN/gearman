@@ -16,7 +16,7 @@ type Buffer struct {
 }
 
 // Close is a no-op method that satisfies the io.Closer interface.
-func (b Buffer) Close() error {
+func (b *Buffer) Close() error {
 	return nil
 }
 

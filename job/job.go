@@ -63,12 +63,12 @@ type Job struct {
 }
 
 // Handle returns the job handle assigned by the Gearman server.
-func (j Job) Handle() string {
+func (j *Job) Handle() string {
 	return j.handle
 }
 
 // Status returns the current status of the gearman job.
-func (j Job) Status() Status {
+func (j *Job) Status() Status {
 	return j.status
 }
 

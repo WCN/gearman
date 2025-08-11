@@ -45,15 +45,15 @@ type noOpCloser struct {
 	w io.Writer
 }
 
-func (c noOpCloser) Write(data []byte) (n int, err error) {
+func (c *noOpCloser) Write(data []byte) (n int, err error) {
 	return c.w.Write(data)
 }
 
-func (c noOpCloser) Close() error {
+func (c *noOpCloser) Close() error {
 	return nil
 }
 
-var discard = noOpCloser{w: io.Discard}
+var discard = &noOpCloser{w: io.Discard}
 
 type partialJob struct {
 	// data is used to write data back to the caller's provided io.Writer
