@@ -11,8 +11,7 @@ import (
 )
 
 func statusPacket(handle string, num, den int) *packet.Packet {
-	arguments := [][]byte{}
-	arguments = append(arguments, []byte(strconv.Itoa(num)), []byte(strconv.Itoa(den)))
+	arguments := [][]byte{[]byte(strconv.Itoa(num)), []byte(strconv.Itoa(den))}
 	return handlePacket(handle, packet.WorkStatus, arguments)
 }
 

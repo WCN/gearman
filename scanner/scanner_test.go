@@ -22,7 +22,7 @@ func TestScanner(t *testing.T) {
 	packetNoArgs := packetWithArgs([][]byte{})
 	packetOneArg := packetWithArgs([][]byte{arg})
 	packetMultArgs := packetWithArgs([][]byte{arg, arg, arg})
-	tmp := []byte{}
+	var tmp []byte
 	noArgB, err := packetNoArgs.MarshalBinary()
 	assert.Nil(t, err, nil)
 	tmp = append(tmp, noArgB...)

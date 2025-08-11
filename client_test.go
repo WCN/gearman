@@ -2,7 +2,6 @@ package gearman
 
 import (
 	"bytes"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -44,7 +43,7 @@ func TestSubmit(t *testing.T) {
 	expectedPacket := &packet.Packet{
 		Code:      []byte{0x0, 0x52, 0x45, 0x51}, // \0REQ
 		Type:      packet.SubmitJob,
-		Arguments: [][]byte{[]byte("my_function"), []byte{}, []byte("my data")},
+		Arguments: [][]byte{[]byte("my_function"), {}, []byte("my data")},
 	}
 	b, err := expectedPacket.MarshalBinary()
 	assert.Nil(t, err)
@@ -85,18 +84,25 @@ func TestJobCreated(t *testing.T) {
 
 func TestRoutePackets(t *testing.T) {
 	c := mockClient()
-	packetChans := []chan *packet.Packet{}
-	for i := 0; i < 5; i++ {
-		packetChans = append(packetChans, make(chan *packet.Packet, 10))
-		c.jobs[strconv.Itoa(i)] = packetChans[i]
+	c.jobs = map[string]chan *packet.Packet{
+		"0": make(chan *packet.Packet, 10),
+		"1": make(chan *packet.Packet, 10),
+		"2": make(chan *packet.Packet, 10),
+		"3": make(chan *packet.Packet, 10),
+		"4": make(chan *packet.Packet, 10),
 	}
 
-	packets := []*packet.Packet{}
-	packets = append(packets, handlePacket("0", packet.WorkFail, nil))
-	packets = append(packets, handlePacket("1", packet.WorkFail, nil))
-	packets = append(packets, handlePacket("2", packet.WorkFail, nil))
-	packets = append(packets, handlePacket("3", packet.WorkFail, nil))
-	packets = append(packets, handlePacket("4", packet.WorkFail, nil))
+	packetChans := []chan *packet.Packet{
+		c.jobs["0"], c.jobs["1"], c.jobs["2"], c.jobs["3"], c.jobs["4"],
+	}
+
+	packets := []*packet.Packet{
+		handlePacket("0", packet.WorkFail, nil),
+		handlePacket("1", packet.WorkFail, nil),
+		handlePacket("2", packet.WorkFail, nil),
+		handlePacket("3", packet.WorkFail, nil),
+		handlePacket("4", packet.WorkFail, nil),
+	}
 	for _, pack := range packets {
 		c.packets <- pack
 	}

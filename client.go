@@ -108,7 +108,7 @@ func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser
 	pack := &packet.Packet{
 		Code:      packet.Req,
 		Type:      t,
-		Arguments: [][]byte{[]byte(fn), []byte{}, payload},
+		Arguments: [][]byte{[]byte(fn), {}, payload},
 	}
 	buf, err := pack.MarshalBinary()
 	if err != nil {
@@ -133,8 +133,8 @@ func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser
 	}
 
 	select {
-	case job := <-c.newJobs:
-		return job, nil
+	case j := <-c.newJobs:
+		return j, nil
 	case <-time.After(30 * time.Second):
 		return nil, fmt.Errorf("timeout waiting for job creation")
 	}
