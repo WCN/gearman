@@ -36,9 +36,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adamoleeo/gearman/v2/job"
-	"github.com/adamoleeo/gearman/v2/packet"
-	"github.com/adamoleeo/gearman/v2/scanner"
+	"github.com/wcn/gearman/v2/job"
+	"github.com/wcn/gearman/v2/packet"
+	"github.com/wcn/gearman/v2/scanner"
 )
 
 // noOpCloser is like an ioutil.NopCloser, but for an io.Writer.

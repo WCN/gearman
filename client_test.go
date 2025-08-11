@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamoleeo/gearman/v2/job"
-	"github.com/adamoleeo/gearman/v2/packet"
+	"github.com/wcn/gearman/v2/job"
+	"github.com/wcn/gearman/v2/packet"
 
 	"github.com/stretchr/testify/assert"
 )

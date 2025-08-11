@@ -11,7 +11,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/adamoleeo/gearman/v2/packet"
+	"github.com/wcn/gearman/v2/packet"
 )
 
 // State represents the current state of a Gearman job.

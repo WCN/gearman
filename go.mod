@@ -1,4 +1,4 @@
-module github.com/adamoleeo/gearman/v2
+module github.com/wcn/gearman/v2
 
 go 1.18
 

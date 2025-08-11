@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/adamoleeo/gearman/v2/packet"
-	"github.com/adamoleeo/gearman/v2/utils"
+	"github.com/wcn/gearman/v2/packet"
+	"github.com/wcn/gearman/v2/utils"
 
 	"github.com/stretchr/testify/assert"
 )
