@@ -2,8 +2,11 @@ package gearman
 
 import (
 	"bytes"
+	"context"
+	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wcn/gearman/v2/job"
 	"github.com/wcn/gearman/v2/packet"
@@ -19,6 +22,27 @@ func (buf *bufferCloser) Close() error {
 	return nil
 }
 
+// Implement net.Conn interface
+func (buf *bufferCloser) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
+}
+
+func (buf *bufferCloser) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 4730}
+}
+
+func (buf *bufferCloser) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (buf *bufferCloser) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (buf *bufferCloser) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
 func mockClient() *Client {
 	c := &Client{
 		conn:    &bufferCloser{},
@@ -28,7 +52,7 @@ func mockClient() *Client {
 		jobs:        make(map[string]chan *packet.Packet, 10),
 		partialJobs: make(chan *partialJob, 10),
 	}
-	go c.routePackets()
+	go c.routePackets(context.Background())
 	return c
 }
 

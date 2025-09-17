@@ -9,81 +9,96 @@ For complete usage examples and documentation, please see [https://pkg.go.dev/gi
 
 ### Example
 
-Here's an example program that submits a job to Gearman and listens for events
-from that job:
+Basic example that makes an RPC call to a gearman reverse service like those
+on the [gearman examples page](https://gearman.org/examples/reverse/)
+
+We recommend using the `SimpleClient` for simple RPC usage. The original v2
+`Client` is still available, but will probably be removed for v3 - the forking
+authors have no requirement for streaming responses etc.
 
 ```go
 package main
 
 import (
-    "github.com/wcn/gearman/v2"
-    "io"
+	"context"
+	"log/slog"
+	"os"
+	"time"
+
+	slogctx "github.com/veqryn/slog-context"
+	"github.com/wcn/gearman/v2"
 )
 
 func main() {
-    client, err := gearman.NewClient("tcp4", "localhost:4730")
-    if err != nil {
-        panic(err)
-    }
+	config := gearman.DefaultConfig("localhost:4730")
+	config.Timeout = 60 * time.Second
+	client, _ := gearman.NewSimpleClient(config)
 
-    j, err := client.Submit("reverse", []byte("hello world!"), nil, nil)
-    if err != nil {
-        panic(err)
-    }
-    state := j.Run()
-    println(state) // job.Completed
-    data, err := io.ReadAll(j.Data())
-    if err != nil {
-        panic(err)
-    }
-    println(data) // !dlrow olleh
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	ctx := slogctx.With(context.Background(), logger)
+	client.Start(ctx)
+	defer client.Close()
+
+	childCtx := slogctx.With(ctx, logger.With(slog.String("scope", "single-job")))
+	response, err := client.Call(childCtx, "reverse", []byte("hello world"))
+	if err != nil {
+		panic(err)
+	}
+	println(string(response)) // !dlrow olleh
 }
 ```
 
 ## Usage
 
-#### type Client
+### func NewSimpleClient
 
 ```go
-type Client struct {
-}
+func NewSimpleClient(config ClientConfig) (*SimpleClient, error)
 ```
 
-Client is a Gearman client
+NewSimpleClient returns a new Gearman client pointing at the configured server
 
-#### func NewClient
+#### func (*SimpleClient) Start
 
 ```go
-func NewClient(network, addr string) (*Client, error)
+func (c *SimpleClient) Start(context.Context ctx) error
 ```
 
-NewClient returns a new Gearman client pointing at the specified server
+Start() starts the packet-processing goroutines required for communication
+with gearmand
 
-#### func (*Client) Close
+#### func (*SimpleClient) Close
 
 ```go
-func (c *Client) Close() error
+func (c *SimpleClient) Close() error
 ```
 
-Close terminates the connection to the server
+Close terminates the connection to the server and stops the packet-processing
+goroutines.
 
-#### func (*Client) Submit
+#### func (*Client) Call
 
 ```go
-func (c *Client) Submit(fn string, payload []byte, data, warnings io.WriteCloser) (*job.Job, error)
+func (c *Client) Call(ctx context.Context, function string, payload []byte) ([]byte, error)
 ```
 
-Submit sends a new job to the server with the specified function and payload.
-You must provide two WriteClosers for data and warnings to be written to.
+Call sends a new job to the server with the specified function and payload,
+waits for the job to complete and returns any response data.
 
-#### func (*Client) SubmitBackground
+This library may log certain things via slog. It will
+use [slogctx](https://github.com/veqryn/slog-context) to get a slog instance
+from ctx where possible, but if you have not added a slog instance to your
+context using that library then slog.Default will be used instead.
 
-```go
-func (c *Client) SubmitBackground(fn string, payload []byte) error
-```
+## Logging
 
-SubmitBackground submits a background job. There is no access to data, warnings,
-or completion state.
+Because of the async nature of the gearmand connection, sometimes things happen
+that cannot be communicated by returning an error from a function call - for
+example if we receive an invalid packet from gearmand. This library therefore
+logs these events via slog. [slogctx](https://github.com/veqryn/slog-context) is
+used to obtain slog instances - you can pass your own slog in the contexts
+passed to `Start()` and `Call()`. The library will use the most-appropriately
+scoped logger it can.
 
 # HISTORY
 
