@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wcn/gearman/v2/packet"
 )
 
@@ -44,7 +45,7 @@ func TestClientPing(t *testing.T) {
 	}
 
 	wg.Wait()
-	assert.NoError(t, pingErr, "Ping should succeed")
+	require.NoError(t, pingErr, "Ping should succeed")
 
 	c.pingLock.RLock()
 	assert.Equal(t, 0, len(c.pings), "Ping request should be cleaned up after response")
@@ -60,7 +61,7 @@ func TestClientPingTimeout(t *testing.T) {
 
 	err := c.Ping(ctx)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context deadline exceeded", "Should be a timeout error")
 
 	c.pingLock.RLock()
@@ -134,7 +135,7 @@ func TestSimpleClientPing(t *testing.T) {
 	}
 
 	wg.Wait()
-	assert.NoError(t, pingErr, "SimpleClient.Ping should succeed")
+	require.NoError(t, pingErr, "SimpleClient.Ping should succeed")
 
 	sc.client.pingLock.RLock()
 	assert.Equal(t, 0, len(sc.client.pings), "Ping request should be cleaned up after response")
@@ -165,7 +166,7 @@ func TestSimpleClientPingStateValidation(t *testing.T) {
 				client.Close()
 				sc.client = client
 			},
-			expectedError: "client has been closed",
+			expectedError: "client is closed",
 		},
 	}
 
@@ -178,7 +179,7 @@ func TestSimpleClientPingStateValidation(t *testing.T) {
 
 			err := sc.Ping(context.Background())
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedError)
 		})
 	}

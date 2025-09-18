@@ -70,6 +70,8 @@ type partialJob struct {
 // The client maintains a connection to the server and handles packet routing
 // to the appropriate jobs.
 type Client struct {
+	network string
+	address string
 	// conn is the connection to the gearman server
 	conn net.Conn
 	// packets is the stream of incoming gearman packets from the server
@@ -93,15 +95,21 @@ type Client struct {
 	cancel context.CancelFunc
 }
 
-// Start begins the background goroutines for packet processing.
+// Start connects to server and starts the goroutines for packet processing.
 // When the provided context is cancelled, the client will automatically close,
-func (c *Client) Start(ctx context.Context) {
+func (c *Client) Start(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
 	if c.started {
-		return
+		return nil
 	}
+
+	conn, err := net.Dial(c.network, c.address)
+	if err != nil {
+		return fmt.Errorf("error while establishing a connection to gearman: %s", err)
+	}
+	c.conn = conn
 
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.started = true
@@ -114,6 +122,7 @@ func (c *Client) Start(ctx context.Context) {
 		<-ctx.Done()
 		c.Close()
 	}()
+	return nil
 }
 
 // Close terminates the connection to the server and cleans up resources.
@@ -129,6 +138,7 @@ func (c *Client) Close() error {
 	if c.cancel != nil {
 		c.cancel()
 	}
+
 	// TODO: figure out when to close packet chan
 	return c.conn.Close()
 }
@@ -450,34 +460,31 @@ func (c *Client) routePackets(ctx context.Context) {
 
 // newClientWithoutStart creates a client but doesn't start background goroutines.
 // This is used internally by SimpleClient.
-func newClientWithoutStart(network, addr string) (*Client, error) {
-	conn, err := net.Dial(network, addr)
-	if err != nil {
-		return nil, fmt.Errorf("error while establishing a connection to gearman: %s", err)
-	}
-
+func newClientWithoutStart(network, address string) *Client {
 	return &Client{
-		conn:        conn,
+		network:     network,
+		address:     address,
 		packets:     make(chan *packet.Packet),
 		newJobs:     make(chan *job.Job),
 		partialJobs: make(chan *partialJob),
 		jobs:        make(map[string]chan *packet.Packet),
 		pings:       make(map[string]chan struct{}),
-	}, nil
+	}
 }
 
 // NewClient returns a new Gearman client pointing at the specified server.
 // For v2 compatibility, this automatically starts the background goroutines.
-func NewClient(network, addr string) (*Client, error) {
-	c, err := newClientWithoutStart(network, addr)
-	if err != nil {
-		return nil, err
-	}
+func NewClient(network, address string) (*Client, error) {
+	c := newClientWithoutStart(network, address)
 
 	// Auto-start with background context for v2 compatibility
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx := slogctx.With(context.Background(), logger)
-	c.Start(ctx)
+
+	err := c.Start(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

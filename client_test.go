@@ -45,6 +45,8 @@ func (buf *bufferCloser) SetWriteDeadline(t time.Time) error {
 
 func mockClient() *Client {
 	c := &Client{
+		//network: "tcp4",
+		//address: "localhost:4730",
 		conn:    &bufferCloser{},
 		packets: make(chan *packet.Packet),
 		// Add buffers to prevent blocking in test cases

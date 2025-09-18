@@ -5,10 +5,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
-	slogctx "github.com/veqryn/slog-context"
 	"github.com/wcn/gearman/v2/job"
 )
 
@@ -35,38 +33,20 @@ func DefaultConfig(address string) ClientConfig {
 }
 
 // NewSimpleClient creates a new simple Gearman client.
-// The client is created but background goroutines are not started.
 // You must call Start(ctx) before using the client in order to open the
 // connection to gearmand. client.Close() should be called to close the
 // connection unless you expect to make subsequent calls.
-func NewSimpleClient(config ClientConfig) (*SimpleClient, error) {
-	client, err := newClientWithoutStart(config.Network, config.Address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gearman client: %w", err)
-	}
+func NewSimpleClient(config ClientConfig) *SimpleClient {
+	client := newClientWithoutStart(config.Network, config.Address)
 
 	return &SimpleClient{
 		client: client,
 		config: config,
-	}, nil
+	}
 }
 
 // Call performs a synchronous RPC call to the specified Gearman function.
 func (c *SimpleClient) Call(ctx context.Context, function string, payload []byte) ([]byte, error) {
-	logger := slogctx.FromCtx(ctx)
-
-	// Ensure client is connected
-	c.client.connLock.RLock()
-	if !c.client.started {
-		c.client.connLock.RUnlock()
-		return nil, fmt.Errorf("client has not been started - call Start(ctx) first")
-	}
-	if c.client.closed {
-		c.client.connLock.RUnlock()
-		return nil, fmt.Errorf("client has been closed")
-	}
-	c.client.connLock.RUnlock()
-
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && c.config.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.config.Timeout)
@@ -99,7 +79,6 @@ func (c *SimpleClient) Call(ctx context.Context, function string, payload []byte
 			return nil, fmt.Errorf("gearman job finished with unexpected state: %v", state)
 		}
 	case <-ctx.Done():
-		logger.Debug("gearman Call() cancelled due to context")
 		return nil, ctx.Err()
 	}
 }
@@ -113,10 +92,10 @@ func (b *bufferWriteCloser) Close() error {
 	return nil
 }
 
-// Start begins the background goroutines for packet processing.
+// Start connects to server and starts the goroutines for packet processing.
 // This must be called before using the client for any operations.
-func (c *SimpleClient) Start(ctx context.Context) {
-	c.client.Start(ctx)
+func (c *SimpleClient) Start(ctx context.Context) error {
+	return c.client.Start(ctx)
 }
 
 // Close closes the client connection and cleanly shuts down all background processing.
@@ -128,19 +107,6 @@ func (c *SimpleClient) Close() error {
 // It generates its own content for the echo request and returns an error if the ping fails or times out.
 // The ping uses the configured timeout if the context doesn't have a deadline.
 func (c *SimpleClient) Ping(ctx context.Context) error {
-	logger := slogctx.FromCtx(ctx)
-
-	// Ensure client is connected
-	c.client.connLock.RLock()
-	if !c.client.started {
-		c.client.connLock.RUnlock()
-		return fmt.Errorf("client has not been started - call Start(ctx) first")
-	}
-	if c.client.closed {
-		c.client.connLock.RUnlock()
-		return fmt.Errorf("client has been closed")
-	}
-	c.client.connLock.RUnlock()
 
 	timeout := c.config.Timeout
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && timeout > 0 {
@@ -150,11 +116,5 @@ func (c *SimpleClient) Ping(ctx context.Context) error {
 	}
 
 	// Call the underlying client ping
-	err := c.client.Ping(ctx)
-	if err != nil {
-		logger.Debug("Ping failed", slog.Any("error", err))
-		return err
-	}
-
-	return nil
+	return c.client.Ping(ctx)
 }

@@ -37,7 +37,6 @@ func TestSimpleClient_StateValidation(t *testing.T) {
 		{
 			name: "client not started",
 			setup: func(sc *SimpleClient) {
-				// Create a client that hasn't been started
 				client := mockClient()
 				client.started = false // Override default for this test
 				sc.client = client
@@ -49,13 +48,10 @@ func TestSimpleClient_StateValidation(t *testing.T) {
 			setup: func(sc *SimpleClient) {
 				// Create a client and close it
 				client := mockClient()
-				client.connLock.Lock()
-				client.started = true
-				client.connLock.Unlock()
 				client.Close()
 				sc.client = client
 			},
-			expectedError: "client has been closed",
+			expectedError: "client is closed",
 		},
 	}
 
@@ -113,7 +109,6 @@ func TestSimpleClient_Close(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// Verify client is marked as closed
 			assert.True(t, sc.client.closed)
 		})
 	}
@@ -122,15 +117,12 @@ func TestSimpleClient_Close(t *testing.T) {
 func TestSimpleClient_CloseIdempotent(t *testing.T) {
 	sc := mockSimpleClient()
 
-	// First close
 	err1 := sc.Close()
 	assert.NoError(t, err1)
 
-	// Second close should also succeed (idempotent)
 	err2 := sc.Close()
 	assert.NoError(t, err2)
 
-	// Third close should also succeed
 	err3 := sc.Close()
 	assert.NoError(t, err3)
 }
@@ -162,14 +154,14 @@ func TestNewSimpleClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewSimpleClient(tt.config)
+			client := NewSimpleClient(tt.config)
+			require.NotNil(t, client)
+			err := client.Start(context.Background())
 
 			if tt.expectedError {
 				require.Error(t, err)
-				assert.Nil(t, client)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, client)
 				assert.Equal(t, tt.config, client.config)
 				assert.NotNil(t, client.client)
 			}
