@@ -51,6 +51,8 @@ func mockClient() *Client {
 		newJobs:     make(chan *job.Job, 10),
 		jobs:        make(map[string]chan *packet.Packet, 10),
 		partialJobs: make(chan *partialJob, 10),
+		pings:       make(map[string]chan struct{}),
+		started:     true, // Default to started for most tests
 	}
 	go c.routePackets(context.Background())
 	return c
@@ -58,6 +60,7 @@ func mockClient() *Client {
 
 func TestSubmit(t *testing.T) {
 	c := mockClient()
+
 	buf := c.conn.(*bufferCloser)
 	expected := job.New("the_handle", nil, nil, make(chan *packet.Packet))
 	c.newJobs <- expected

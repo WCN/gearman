@@ -20,6 +20,10 @@ const (
 	WorkComplete = 13
 	// WorkFail = WORK_FAIL
 	WorkFail = 14
+	// EchoReq = ECHO_REQ
+	EchoReq = 16
+	// EchoRes = ECHO_RES
+	EchoRes = 17
 	// SubmitJobBg = SUBMIT_JOB_BG
 	SubmitJobBg = 18
 	// WorkData = WORK_DATA
@@ -45,6 +49,10 @@ func (t Type) String() string {
 		return "WorkComplete"
 	case WorkFail:
 		return "WorkFail"
+	case EchoReq:
+		return "EchoReq"
+	case EchoRes:
+		return "EchoRes"
 	case SubmitJobBg:
 		return "SubmitJobBg"
 	case WorkData:

@@ -39,6 +39,7 @@ func TestSimpleClient_StateValidation(t *testing.T) {
 			setup: func(sc *SimpleClient) {
 				// Create a client that hasn't been started
 				client := mockClient()
+				client.started = false // Override default for this test
 				sc.client = client
 			},
 			expectedError: "client has not been started - call Start(ctx) first",

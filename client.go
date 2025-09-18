@@ -35,6 +35,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	slogctx "github.com/veqryn/slog-context"
@@ -79,14 +80,17 @@ type Client struct {
 	partialJobs chan *partialJob
 	newJobs     chan *job.Job
 	jobLock     sync.RWMutex
+	// pings tracks ping identifiers so we can route them back to the caller
+	pings    map[string]chan struct{}
+	pingLock sync.RWMutex
 	// connection state
 	connLock sync.RWMutex
 	connErr  error // tracks the last connection error
 	closed   bool  // tracks if the client has been closed
+	started  bool  // prevents multiple Start() calls
 	// goroutine management (added in v2, backward compatible)
-	started bool // prevents multiple Start() calls
-	ctx     context.Context
-	cancel  context.CancelFunc
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // Start begins the background goroutines for packet processing.
@@ -129,18 +133,29 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser, t packet.Type, timeout time.Duration) (*job.Job, error) {
-	// Check if the client has been closed or has a connection error
+func (c *Client) isReady() error {
 	c.connLock.RLock()
 	if c.closed {
 		c.connLock.RUnlock()
-		return nil, fmt.Errorf("client is closed")
+		return fmt.Errorf("client is closed")
 	}
 	if c.connErr != nil {
 		c.connLock.RUnlock()
-		return nil, fmt.Errorf("connection error: %w", c.connErr)
+		return fmt.Errorf("connection error: %w", c.connErr)
+	}
+	if !c.started {
+		c.connLock.RUnlock()
+		return fmt.Errorf("client has not been started - call Start(ctx) first")
 	}
 	c.connLock.RUnlock()
+
+	return nil
+}
+
+func (c *Client) submit(fn string, payload []byte, data, warnings io.WriteCloser, t packet.Type, timeout time.Duration) (*job.Job, error) {
+	if err := c.isReady(); err != nil {
+		return nil, err
+	}
 
 	// create and marshal the gearman packet
 	pack := &packet.Packet{
@@ -216,6 +231,69 @@ func (c *Client) deleteJob(handle string) {
 	c.jobLock.Lock()
 	defer c.jobLock.Unlock()
 	delete(c.jobs, handle)
+}
+
+// pingCounter is used to ensure uniqueness when multiple pings happen in the same nanosecond
+var pingCounter int64
+
+// generatePingToken creates a unique token for ping requests with "echo" prefix
+// Uses PID + timestamp + counter to ensure uniqueness without error handling
+func generatePingToken() string {
+	pid := os.Getpid()
+	now := time.Now().UnixNano()
+	counter := atomic.AddInt64(&pingCounter, 1)
+	return fmt.Sprintf("echo%d_%d_%d", pid, now, counter)
+}
+
+// Ping sends an ECHO_REQ packet to the server and waits for the corresponding ECHO_RES.
+// It returns the echoed data or an error if the ping fails or times out.
+func (c *Client) Ping(ctx context.Context) error {
+	if err := c.isReady(); err != nil {
+		return err
+	}
+
+	token := generatePingToken()
+	responseChan := make(chan struct{}, 1)
+	c.pingLock.Lock()
+	c.pings[token] = responseChan
+	c.pingLock.Unlock()
+
+	pack := &packet.Packet{
+		Code:      packet.Req,
+		Type:      packet.EchoReq,
+		Arguments: [][]byte{[]byte(token)},
+	}
+
+	buf, err := pack.MarshalBinary()
+	if err != nil {
+		c.pingLock.Lock()
+		delete(c.pings, token)
+		c.pingLock.Unlock()
+		return fmt.Errorf("failed to marshal ECHO_REQ packet: %w", err)
+	}
+
+	_, err = io.Copy(c.conn, bytes.NewBuffer(buf))
+	if err != nil {
+		c.pingLock.Lock()
+		delete(c.pings, token)
+		c.pingLock.Unlock()
+
+		// Mark connection as failed
+		c.connLock.Lock()
+		c.connErr = err
+		c.connLock.Unlock()
+		return fmt.Errorf("failed to send ECHO_REQ packet: %w", err)
+	}
+
+	select {
+	case <-responseChan:
+		return nil
+	case <-ctx.Done():
+		c.pingLock.Lock()
+		delete(c.pings, token)
+		c.pingLock.Unlock()
+		return ctx.Err()
+	}
 }
 
 // read attempts to read incoming packets from the gearman server to route them to the job
@@ -300,6 +378,36 @@ func (c *Client) routePackets(ctx context.Context) {
 	for {
 		select {
 		case pack := <-c.packets:
+			switch pack.Type {
+			case packet.EchoRes:
+				if len(pack.Arguments) == 0 {
+					logger.Warn("ECHO_RES packet received with no data")
+					continue
+				}
+
+				token := string(pack.Arguments[0])
+
+				// Look for a matching ping request
+				c.pingLock.Lock()
+				pingResponseChan, exists := c.pings[token]
+				if exists {
+					delete(c.pings, token)
+				}
+				c.pingLock.Unlock()
+
+				if exists {
+					// Send response back to waiting ping
+					select {
+					case pingResponseChan <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
+				} else {
+					logger.Warn("Received ECHO_RES for unknown token", slog.String("token", token))
+				}
+				continue
+			}
+
 			if len(pack.Arguments) == 0 {
 				logger.Warn("Packet read with no handle")
 				continue
@@ -354,6 +462,7 @@ func newClientWithoutStart(network, addr string) (*Client, error) {
 		newJobs:     make(chan *job.Job),
 		partialJobs: make(chan *partialJob),
 		jobs:        make(map[string]chan *packet.Packet),
+		pings:       make(map[string]chan struct{}),
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	slogctx "github.com/veqryn/slog-context"
@@ -121,4 +122,39 @@ func (c *SimpleClient) Start(ctx context.Context) {
 // Close closes the client connection and cleanly shuts down all background processing.
 func (c *SimpleClient) Close() error {
 	return c.client.Close()
+}
+
+// Ping sends an ECHO_REQ packet to the Gearman server and waits for the corresponding ECHO_RES.
+// It generates its own content for the echo request and returns an error if the ping fails or times out.
+// The ping uses the configured timeout if the context doesn't have a deadline.
+func (c *SimpleClient) Ping(ctx context.Context) error {
+	logger := slogctx.FromCtx(ctx)
+
+	// Ensure client is connected
+	c.client.connLock.RLock()
+	if !c.client.started {
+		c.client.connLock.RUnlock()
+		return fmt.Errorf("client has not been started - call Start(ctx) first")
+	}
+	if c.client.closed {
+		c.client.connLock.RUnlock()
+		return fmt.Errorf("client has been closed")
+	}
+	c.client.connLock.RUnlock()
+
+	timeout := c.config.Timeout
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	// Call the underlying client ping
+	err := c.client.Ping(ctx)
+	if err != nil {
+		logger.Debug("Ping failed", slog.Any("error", err))
+		return err
+	}
+
+	return nil
 }
