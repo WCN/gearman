@@ -23,7 +23,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"time"
 
 	slogctx "github.com/veqryn/slog-context"
 	"github.com/wcn/gearman/v2"
@@ -31,19 +30,17 @@ import (
 
 func main() {
 	config := gearman.DefaultConfig("localhost:4730")
-	config.Timeout = 60 * time.Second
-	client, _ := gearman.NewSimpleClient(config)
+	client := gearman.NewSimpleClient(config)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	ctx := slogctx.With(context.Background(), logger)
-	client.Start(ctx)
-	defer client.Close()
-
-	childCtx := slogctx.With(ctx, logger.With(slog.String("scope", "single-job")))
-	response, err := client.Call(childCtx, "reverse", []byte("hello world"))
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	ctx := slogctx.With(context.Background(), log)
+	err := client.Start(ctx)
 	if err != nil {
 		panic(err)
 	}
+	defer client.Close()
+
+	response, _ := client.Call(ctx, "reverse", []byte("hello world"))
 	println(string(response)) // !dlrow olleh
 }
 ```
@@ -53,19 +50,20 @@ func main() {
 ### func NewSimpleClient
 
 ```go
-func NewSimpleClient(config ClientConfig) (*SimpleClient, error)
+func NewSimpleClient(config ClientConfig) *SimpleClient
 ```
 
-NewSimpleClient returns a new Gearman client pointing at the configured server
+NewSimpleClient returns a new Gearman client pointing at the configured server.
+Note the client must be `Start()`ed before you use it.
 
 #### func (*SimpleClient) Start
 
 ```go
-func (c *SimpleClient) Start(context.Context ctx) error
+func (c *SimpleClient) Start(ctx context.Context) error
 ```
 
-Start() starts the packet-processing goroutines required for communication
-with gearmand
+Start() connects to gearmand and starts the packet-processing goroutines
+required to receive responses from it
 
 #### func (*SimpleClient) Close
 
@@ -76,19 +74,24 @@ func (c *SimpleClient) Close() error
 Close terminates the connection to the server and stops the packet-processing
 goroutines.
 
-#### func (*Client) Call
+#### func (*SimpleClient) Call
 
 ```go
-func (c *Client) Call(ctx context.Context, function string, payload []byte) ([]byte, error)
+func (c *SimpleClient) Call(ctx context.Context, function string, payload []byte) ([]byte, error)
 ```
 
 Call sends a new job to the server with the specified function and payload,
 waits for the job to complete and returns any response data.
 
-This library may log certain things via slog. It will
-use [slogctx](https://github.com/veqryn/slog-context) to get a slog instance
-from ctx where possible, but if you have not added a slog instance to your
-context using that library then slog.Default will be used instead.
+#### func (*SimpleClient) Ping
+
+```go
+func (c *SimpleClient) Ping(ctx context.Context) error
+```
+
+Ping uses gearmand's ECHO_REQ/ECHO_RES commands to check if the connection is
+working. Will honour the context's timeout/deadline, or use the `timeout`
+from the client's config if not.
 
 ## Logging
 
@@ -98,7 +101,9 @@ example if we receive an invalid packet from gearmand. This library therefore
 logs these events via slog. [slogctx](https://github.com/veqryn/slog-context) is
 used to obtain slog instances - you can pass your own slog in the contexts
 passed to `Start()` and `Call()`. The library will use the most-appropriately
-scoped logger it can.
+scoped logger it can. If it cannot get one from the context then
+slog.Default will be used instead (via slogctx's
+fallback behaviour)
 
 # HISTORY
 
