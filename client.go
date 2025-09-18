@@ -244,15 +244,14 @@ func (c *Client) deleteJob(handle string) {
 }
 
 // pingCounter is used to ensure uniqueness when multiple pings happen in the same nanosecond
-var pingCounter int64
+var pingCounter atomic.Uint64
 
 // generatePingToken creates a unique token for ping requests with "echo" prefix
 // Uses PID + timestamp + counter to ensure uniqueness without error handling
 func generatePingToken() string {
 	pid := os.Getpid()
 	now := time.Now().UnixNano()
-	counter := atomic.AddInt64(&pingCounter, 1)
-	return fmt.Sprintf("echo%d_%d_%d", pid, now, counter)
+	return fmt.Sprintf("echo%d_%d_%d", pid, now, pingCounter.Add(1))
 }
 
 // Ping sends an ECHO_REQ packet to the server and waits for the corresponding ECHO_RES.
