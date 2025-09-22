@@ -6,11 +6,12 @@
 package job
 
 import (
-	"fmt"
+	"context"
 	"io"
-	"os"
+	"log/slog"
 	"strconv"
 
+	slogctx "github.com/veqryn/slog-context"
 	"github.com/wcn/gearman/v2/packet"
 )
 
@@ -60,6 +61,7 @@ type Job struct {
 	status         Status
 	state          State
 	done           chan struct{}
+	ctx            context.Context // For context-aware logging
 }
 
 // Handle returns the job handle assigned by the Gearman server.
@@ -80,9 +82,13 @@ func (j *Job) Run() State {
 
 // handlePackets updates a job based off of incoming packets associated with this job.
 func (j *Job) handlePackets(packets <-chan *packet.Packet) {
+	logger := slogctx.FromCtx(j.ctx)
+
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "GEARMAN PANIC: recovered from panic in job handlePackets: %v\n", r)
+			logger.Error("Gearman job panic recovered",
+				slog.String("handle", j.handle),
+				slog.Any("panic", r))
 			j.state = Failed
 			close(j.done)
 		}
@@ -90,7 +96,7 @@ func (j *Job) handlePackets(packets <-chan *packet.Packet) {
 
 	for pack := range packets {
 		if pack == nil {
-			fmt.Fprintf(os.Stderr, "GEARMAN WARNING: received nil packet, skipping\n")
+			logger.Debug("Received nil packet, skipping")
 			continue
 		}
 
@@ -98,19 +104,25 @@ func (j *Job) handlePackets(packets <-chan *packet.Packet) {
 		case packet.WorkStatus:
 			// check that packet is valid WORK_STATUS
 			if len(pack.Arguments) != 3 {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Received invalid WORK_STATUS packet with '%d' fields\n",
-					len(pack.Arguments))
+				logger.Warn("Received invalid WORK_STATUS packet",
+					slog.String("handle", j.handle),
+					slog.Int("field_count", len(pack.Arguments)),
+					slog.Int("expected_fields", 3))
 				continue
 			}
 
 			num, err := strconv.Atoi(string(pack.Arguments[1]))
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Error converting numerator", err)
+				logger.Warn("Error converting numerator in WORK_STATUS",
+					slog.String("handle", j.handle),
+					slog.Any("error", err))
 				continue
 			}
 			den, err := strconv.Atoi(string(pack.Arguments[2]))
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Error converting denominator", err)
+				logger.Warn("Error converting denominator in WORK_STATUS",
+					slog.String("handle", j.handle),
+					slog.Any("error", err))
 				continue
 			}
 			j.status = Status{Numerator: num, Denominator: den}
@@ -119,14 +131,19 @@ func (j *Job) handlePackets(packets <-chan *packet.Packet) {
 				dataSize := len(pack.Arguments[1])
 
 				if dataSize > 1*1024*1024 { // 1MB limit
-					fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkComplete data too large: %d bytes (maximum 1MB allowed)\n", dataSize)
+					logger.Warn("WorkComplete data too large",
+						slog.String("handle", j.handle),
+						slog.Int("data_size_bytes", dataSize),
+						slog.Int("max_allowed_bytes", 1024*1024))
 					j.state = Failed
 					close(j.done)
 					return
 				}
 
 				if _, err := j.data.Write(pack.Arguments[1]); err != nil {
-					fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing data from WorkComplete: %v\n", err)
+					logger.Warn("Error writing data from WorkComplete",
+						slog.String("handle", j.handle),
+						slog.Any("error", err))
 				}
 			}
 			j.state = Completed
@@ -136,44 +153,54 @@ func (j *Job) handlePackets(packets <-chan *packet.Packet) {
 			close(j.done)
 		case packet.WorkData:
 			if len(pack.Arguments) < 2 {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkData packet missing data argument\n")
+				logger.Warn("WorkData packet missing data argument", slog.String("handle", j.handle))
 				continue
 			}
 
 			dataSize := len(pack.Arguments[1])
 			if dataSize > 1*1024*1024 { // 1MB limit
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkData too large: %d bytes (maximum 1MB allowed)\n", dataSize)
+				logger.Warn("WorkData too large",
+					slog.String("handle", j.handle),
+					slog.Int("data_size_bytes", dataSize),
+					slog.Int("max_allowed_bytes", 1024*1024))
 				continue
 			}
 
 			if _, err := j.data.Write(pack.Arguments[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing data: %v\n", err)
+				logger.Warn("Error writing WorkData",
+					slog.String("handle", j.handle),
+					slog.Any("error", err))
 			}
 		case packet.WorkWarning:
 			if len(pack.Arguments) < 2 {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkWarning packet missing warning argument\n")
+				logger.Warn("WorkWarning packet missing warning argument", slog.String("handle", j.handle))
 				continue
 			}
 
 			warningSize := len(pack.Arguments[1])
 			if warningSize > 100*1024 { // 100KB limit for warnings
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: WorkWarning too large: %d bytes (maximum 100KB allowed)\n", warningSize)
+				logger.Warn("WorkWarning too large",
+					slog.String("handle", j.handle),
+					slog.Int("warning_size_bytes", warningSize),
+					slog.Int("max_allowed_bytes", 100*1024))
 				continue
 			}
 
 			if _, err := j.warnings.Write(pack.Arguments[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "GEARMAN WARNING: Error writing warnings: %v\n", err)
+				logger.Warn("Error writing WorkWarning",
+					slog.String("handle", j.handle),
+					slog.Any("error", err))
 			}
 		default:
-			fmt.Fprintln(os.Stderr, "GEARMAN WARNING: Unimplemented packet type", pack.Type)
+			logger.Warn("Unimplemented packet type",
+				slog.String("handle", j.handle),
+				slog.Any("packet_type", pack.Type))
 		}
 	}
 }
 
-// New creates a new Gearman job with the specified handle, updating the job based on the packets
-// in the packets channel. The only packets coming down packets should be packets for this job.
-// It also takes in two WriteClosers to right job data and warnings to.
-func New(handle string, data, warnings io.WriteCloser, packets chan *packet.Packet) *Job {
+// NewWithContext creates a new Gearman job with context support for logging.
+func NewWithContext(ctx context.Context, handle string, data, warnings io.WriteCloser, packets chan *packet.Packet) *Job {
 	j := &Job{
 		handle:   handle,
 		data:     data,
@@ -181,7 +208,16 @@ func New(handle string, data, warnings io.WriteCloser, packets chan *packet.Pack
 		status:   Status{},
 		state:    Running,
 		done:     make(chan struct{}),
+		ctx:      ctx,
 	}
 	go j.handlePackets(packets)
 	return j
+}
+
+// New creates a new Gearman job with the specified handle, updating the job based on the packets
+// in the packets channel. The only packets coming down packets should be packets for this job.
+// It also takes in two WriteClosers to right job data and warnings to.
+// Deprecated: Use NewWithContext for context/slog support.
+func New(handle string, data, warnings io.WriteCloser, packets chan *packet.Packet) *Job {
+	return NewWithContext(context.Background(), handle, data, warnings, packets)
 }
